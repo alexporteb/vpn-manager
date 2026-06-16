@@ -2,7 +2,23 @@
 
 **Полноценный VPN-сервер + интерактивный TUI-менеджер для Ubuntu/Debian**
 
-Один скрипт — четыре протокола. Установка за 2 минуты.
+Один скрипт — четыре протокола. Установка и удаление в одну команду.
+
+---
+
+## 🚀 Установка (одна команда)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/alexporteb/vpn-manager/main/setup-vpn.sh | sudo bash
+```
+
+## 🗑️ Удаление (одна команда)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/alexporteb/vpn-manager/main/setup-vpn.sh | sudo bash -s -- --uninstall
+```
+
+> Полностью удаляет все пакеты, конфигурации, сертификаты, пользователей, правила firewall и бинарник vpn-manager.
 
 ---
 
@@ -21,30 +37,6 @@
 - 🔁 **Идемпотентность** — повторный запуск не ломает существующую конфигурацию
 - 🌐 **Автоопределение IP** — внешний IP сервера определяется автоматически
 - 🧱 **Firewall** — автонастройка UFW + iptables NAT/MASQUERADE
-
----
-
-## 🚀 Быстрая установка
-
-```bash
-# Скачать и запустить
-git clone https://github.com/alexporteb/vpn-manager.git
-cd vpn-manager
-chmod +x setup-vpn.sh
-sudo bash setup-vpn.sh
-```
-
-Или одной командой:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/alexporteb/vpn-manager/main/setup-vpn.sh | sudo bash
-```
-
-После установки менеджер запустится автоматически. Для повторного запуска:
-
-```bash
-sudo vpn-manager
-```
 
 ---
 
@@ -70,6 +62,12 @@ sudo vpn-manager
 ---
 
 ## 🖥️ TUI-менеджер
+
+После установки запускайте в любое время:
+
+```bash
+sudo vpn-manager
+```
 
 ### Главное меню
 
@@ -193,7 +191,7 @@ sudo apt install network-manager-strongswan
 
 ## ⚠️ Важные замечания
 
-- **PPTP** считается устаревшим и небезопасным. Используйте IKEv2 когда возможно
+- **PPTP** считается устаревшим и небезопасным — используйте IKEv2 когда возможно
 - Скрипт рассчитан на **чистую установку** Ubuntu/Debian, но идемпотентен при повторном запуске
 - Все пароли хранятся в `/etc/vpn-manager/users.db` (доступ только root, `chmod 600`)
 - После добавления/удаления пользователей strongSwan перезагружает конфигурацию автоматически
@@ -203,9 +201,3 @@ sudo apt install network-manager-strongswan
 ## 📜 Лицензия
 
 MIT License — используйте свободно.
-
----
-
-## 🤝 Вклад
-
-Pull requests приветствуются! Для серьёзных изменений сначала откройте issue для обсуждения.

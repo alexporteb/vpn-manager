@@ -36,6 +36,110 @@ CA_CERT="${PKI_DIR}/cacerts/caCert.pem"
 SERVER_KEY="${PKI_DIR}/private/serverKey.pem"
 SERVER_CERT="${PKI_DIR}/certs/serverCert.pem"
 
+# ============================================================================
+# РЕЖИМ УДАЛЕНИЯ (--uninstall)
+# ============================================================================
+if [[ "${1}" == "--uninstall" ]]; then
+    echo ""
+    echo -e "${RED}${BOLD}╔══════════════════════════════════════════════════════════╗${RESET}"
+    echo -e "${RED}${BOLD}║          🗑️  УДАЛЕНИЕ VPN-СЕРВЕРА                       ║${RESET}"
+    echo -e "${RED}${BOLD}╚══════════════════════════════════════════════════════════╝${RESET}"
+    echo ""
+
+    echo -ne "${RED}${BOLD}  Вы уверены? Будут удалены все VPN-службы, пользователи и сертификаты. (y/N): ${RESET}"
+    read -r confirm
+    if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
+        echo -e "${DIM}  Отменено.${RESET}"
+        exit 0
+    fi
+
+    echo ""
+
+    # 1. Остановка служб
+    echo -e "${YELLOW}  [1/7] Остановка служб...${RESET}"
+    systemctl stop strongswan-starter 2>/dev/null || systemctl stop strongswan 2>/dev/null || systemctl stop ipsec 2>/dev/null || true
+    systemctl stop xl2tpd 2>/dev/null || true
+    systemctl stop pptpd 2>/dev/null || true
+    systemctl disable strongswan-starter 2>/dev/null || systemctl disable strongswan 2>/dev/null || systemctl disable ipsec 2>/dev/null || true
+    systemctl disable xl2tpd 2>/dev/null || true
+    systemctl disable pptpd 2>/dev/null || true
+    echo -e "${GREEN}  ✅ Службы остановлены${RESET}"
+
+    # 2. Удаление пакетов
+    echo -e "${YELLOW}  [2/7] Удаление пакетов...${RESET}"
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get remove --purge -y -qq \
+        strongswan strongswan-pki \
+        libcharon-extra-plugins libcharon-extauth-plugins libstrongswan-extra-plugins \
+        xl2tpd pptpd 2>/dev/null || true
+    apt-get autoremove -y -qq 2>/dev/null || true
+    echo -e "${GREEN}  ✅ Пакеты удалены${RESET}"
+
+    # 3. Удаление конфигурационных файлов
+    echo -e "${YELLOW}  [3/7] Удаление конфигурации...${RESET}"
+    rm -f /etc/ipsec.conf
+    rm -f /etc/ipsec.secrets
+    rm -f /etc/pptpd.conf
+    rm -f /etc/ppp/options.pptpd
+    rm -f /etc/ppp/options.xl2tpd
+    rm -rf /etc/xl2tpd
+    echo -e "${GREEN}  ✅ Конфигурация удалена${RESET}"
+
+    # 4. Удаление сертификатов PKI
+    echo -e "${YELLOW}  [4/7] Удаление сертификатов...${RESET}"
+    rm -rf /etc/ipsec.d/private/*
+    rm -rf /etc/ipsec.d/cacerts/*
+    rm -rf /etc/ipsec.d/certs/*
+    rm -rf /etc/ipsec.d/aacerts/*
+    rm -rf /etc/ipsec.d/ocspcerts/*
+    rm -rf /etc/ipsec.d/crls/*
+    echo -e "${GREEN}  ✅ Сертификаты удалены${RESET}"
+
+    # 5. Очистка VPN-записей из chap-secrets
+    echo -e "${YELLOW}  [5/7] Очистка chap-secrets...${RESET}"
+    sed -i '/^# VPN-MANAGER-START/,/^# VPN-MANAGER-END/d' /etc/ppp/chap-secrets 2>/dev/null || true
+    echo -e "${GREEN}  ✅ chap-secrets очищен${RESET}"
+
+    # 6. Удаление правил Firewall
+    echo -e "${YELLOW}  [6/7] Откат правил Firewall...${RESET}"
+    ufw delete allow 500/udp 2>/dev/null || true
+    ufw delete allow 4500/udp 2>/dev/null || true
+    ufw delete allow 1701/udp 2>/dev/null || true
+    ufw delete allow 1723/tcp 2>/dev/null || true
+    # Удаляем NAT и FORWARD блоки из UFW before.rules
+    UFW_BEFORE="/etc/ufw/before.rules"
+    if [[ -f "${UFW_BEFORE}" ]]; then
+        sed -i '/^# VPN-MANAGER-NAT — BEGIN/,/^# VPN-MANAGER-NAT — END/d' "${UFW_BEFORE}" 2>/dev/null || true
+        sed -i '/^# VPN-MANAGER-FORWARD — BEGIN/,/^# VPN-MANAGER-FORWARD — END/d' "${UFW_BEFORE}" 2>/dev/null || true
+    fi
+    # Возвращаем DEFAULT_FORWARD_POLICY
+    sed -i 's/DEFAULT_FORWARD_POLICY="ACCEPT"/DEFAULT_FORWARD_POLICY="DROP"/g' /etc/default/ufw 2>/dev/null || true
+    # Удаляем sysctl VPN-настройки
+    rm -f /etc/sysctl.d/99-vpn.conf
+    sysctl --system > /dev/null 2>&1 || true
+    # Удаляем iptables NAT-правила для VPN-подсетей
+    DEFAULT_IFACE=$(ip route show default | awk '/default/ {print $5}' | head -1)
+    for subnet in 10.10.10.0/24 10.10.11.0/24 10.10.12.0/24 10.10.13.0/24; do
+        iptables -t nat -D POSTROUTING -s "$subnet" -o "${DEFAULT_IFACE}" -j MASQUERADE 2>/dev/null || true
+    done
+    iptables-save > /etc/iptables/rules.v4 2>/dev/null || true
+    ufw reload 2>/dev/null || true
+    echo -e "${GREEN}  ✅ Firewall откачен${RESET}"
+
+    # 7. Удаление vpn-manager и базы пользователей
+    echo -e "${YELLOW}  [7/7] Удаление vpn-manager...${RESET}"
+    rm -f "${VPN_MANAGER_BIN}"
+    rm -rf "${VPN_MANAGER_DIR}"
+    echo -e "${GREEN}  ✅ vpn-manager удалён${RESET}"
+
+    echo ""
+    echo -e "${GREEN}${BOLD}╔══════════════════════════════════════════════════════════╗${RESET}"
+    echo -e "${GREEN}${BOLD}║     ✅ VPN-СЕРВЕР ПОЛНОСТЬЮ УДАЛЁН                      ║${RESET}"
+    echo -e "${GREEN}${BOLD}╚══════════════════════════════════════════════════════════╝${RESET}"
+    echo ""
+    exit 0
+fi
+
 # ── Определение внешнего IP ──────────────────────────────────────────────────
 detect_external_ip() {
     local ip=""
