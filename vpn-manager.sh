@@ -297,6 +297,7 @@ function manage_users() {
             echo "EOF"
             exit 1
         fi
+        u_choice="${u_choice//$'\r'/}"
         case $u_choice in
             1)
                 read -p "Имя пользователя: " USER
@@ -349,6 +350,7 @@ function server_info() {
 function remove_vpn() {
     clear
     read -p "Вы уверены, что хотите удалить VPN? (y/n): " confirm
+    confirm="${confirm//$'\r'/}"
     if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
         echo "Удаление..."
         systemctl stop strongswan-starter strongswan xl2tpd pptpd 2>/dev/null
@@ -406,6 +408,7 @@ while true; do
         echo "Ошибка ввода (EOF). Завершение..."
         exit 1
     fi
+    choice="${choice//$'\r'/}"
 
     case $choice in
         1) install_vpn ;;
