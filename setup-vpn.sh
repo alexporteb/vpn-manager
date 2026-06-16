@@ -186,6 +186,9 @@ export DEBIAN_FRONTEND=noninteractive
 
 apt-get update -qq
 
+# Удаляем пакеты, конфликтующие с ufw (если установлены)
+apt-get remove -y iptables-persistent netfilter-persistent 2>/dev/null || true
+
 # Установка основных пакетов
 apt-get install -y \
     strongswan \
