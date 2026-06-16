@@ -193,7 +193,6 @@ apt-get install -y \
     xl2tpd \
     pptpd \
     iptables \
-    iptables-persistent \
     ufw \
     curl \
     openssl || {
