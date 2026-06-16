@@ -185,12 +185,18 @@ echo -e "${BLUE}${BOLD}═══════════════════
 
 export DEBIAN_FRONTEND=noninteractive
 
-apt-get update -qq
+# Trap для отладки — показываем номер строки при неожиданном выходе
+trap 'echo -e "${RED}Ошибка в строке $LINENO (код: $?)${RESET}"' ERR
+
+echo -e "${DIM}  Обновление списка пакетов...${RESET}"
+apt-get update -qq 2>&1 || echo -e "${YELLOW}⚠️  apt-get update завершился с ошибкой (не критично)${RESET}"
 
 # Удаляем пакеты, конфликтующие с ufw (если установлены)
+echo -e "${DIM}  Удаление конфликтующих пакетов...${RESET}"
 apt-get remove -y iptables-persistent netfilter-persistent 2>/dev/null || true
 
 # Установка основных пакетов
+echo -e "${DIM}  Установка пакетов...${RESET}"
 apt-get install -y \
     strongswan \
     strongswan-pki \
@@ -199,10 +205,12 @@ apt-get install -y \
     iptables \
     ufw \
     curl \
-    openssl || {
-        echo -e "${RED}Ошибка при установке основных пакетов!${RESET}"
-        exit 1
-    }
+    openssl
+if [[ $? -ne 0 ]]; then
+    echo -e "${RED}Ошибка при установке основных пакетов!${RESET}"
+    echo -e "${RED}Попробуйте: apt-get update && apt-get install -f${RESET}"
+    exit 1
+fi
 
 # Дополнительные плагины strongSwan (могут отсутствовать в некоторых дистрибутивах)
 apt-get install -y \
@@ -211,6 +219,9 @@ apt-get install -y \
     libstrongswan-extra-plugins 2>/dev/null || {
         echo -e "${YELLOW}⚠️  Некоторые дополнительные плагины strongSwan недоступны (не критично)${RESET}"
     }
+
+# Убираем trap после установки
+trap - ERR
 
 echo -e "${GREEN}✅ Все пакеты установлены${RESET}"
 
