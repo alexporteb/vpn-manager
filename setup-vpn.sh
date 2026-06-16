@@ -26,8 +26,6 @@ if [[ $EUID -ne 0 ]]; then
     exit 1
 fi
 
-# Перенаправляем stdin на терминал (нужно для curl|bash, иначе read не работает)
-exec < /dev/tty 2>/dev/null || true
 
 # ── Константы и пути ─────────────────────────────────────────────────────────
 VPN_MANAGER_DIR="/etc/vpn-manager"
@@ -50,7 +48,7 @@ if [[ "${1}" == "--uninstall" ]]; then
     echo ""
 
     echo -ne "${RED}${BOLD}  Вы уверены? Будут удалены все VPN-службы, пользователи и сертификаты. (y/N): ${RESET}"
-    read -r confirm
+    read -r confirm < /dev/tty
     if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
         echo -e "${DIM}  Отменено.${RESET}"
         exit 0
@@ -162,7 +160,7 @@ detect_external_ip() {
 SERVER_IP=$(detect_external_ip)
 if [[ -z "$SERVER_IP" ]]; then
     echo -e "${RED}Не удалось определить внешний IP-адрес. Введите вручную:${RESET}"
-    read -r SERVER_IP
+    read -r SERVER_IP < /dev/tty
 fi
 
 echo -e "${CYAN}${BOLD}Обнаружен внешний IP: ${WHITE}${SERVER_IP}${RESET}"
