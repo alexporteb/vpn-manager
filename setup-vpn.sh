@@ -26,6 +26,9 @@ if [[ $EUID -ne 0 ]]; then
     exit 1
 fi
 
+# Перенаправляем stdin на терминал (нужно для curl|bash, иначе read не работает)
+exec < /dev/tty 2>/dev/null || true
+
 # ── Константы и пути ─────────────────────────────────────────────────────────
 VPN_MANAGER_DIR="/etc/vpn-manager"
 USERS_DB="${VPN_MANAGER_DIR}/users.db"
@@ -691,6 +694,9 @@ WHITE='\e[97m'
 BOLD='\e[1m'
 DIM='\e[2m'
 RESET='\e[0m'
+
+# Перенаправляем stdin на терминал (нужно при запуске из pipe)
+exec < /dev/tty 2>/dev/null || true
 
 # ── Константы ────────────────────────────────────────────────────────────────
 VPN_MANAGER_DIR="/etc/vpn-manager"
