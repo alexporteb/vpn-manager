@@ -9,13 +9,13 @@
 ## 🚀 Установка (одна команда)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alexporteb/vpn-manager/main/setup-vpn.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/alexporteb/vpn-manager/main/setup-vpn.sh -o /tmp/setup-vpn.sh && sudo bash /tmp/setup-vpn.sh
 ```
 
 ## 🗑️ Удаление (одна команда)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alexporteb/vpn-manager/main/setup-vpn.sh | sudo bash -s -- --uninstall
+curl -fsSL https://raw.githubusercontent.com/alexporteb/vpn-manager/main/setup-vpn.sh -o /tmp/setup-vpn.sh && sudo bash /tmp/setup-vpn.sh --uninstall
 ```
 
 > Полностью удаляет все пакеты, конфигурации, сертификаты, пользователей, правила firewall и бинарник vpn-manager.
