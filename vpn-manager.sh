@@ -293,7 +293,10 @@ function manage_users() {
         echo " 3. Список пользователей"
         echo " 0. Назад"
         echo "======================================"
-        read -p "Выберите: " u_choice
+        if ! read -p "Выберите: " u_choice; then
+            echo "EOF"
+            exit 1
+        fi
         case $u_choice in
             1)
                 read -p "Имя пользователя: " USER
@@ -399,7 +402,10 @@ while true; do
     echo " 4. Удалить VPN сервер"
     echo " 0. Выход"
     echo "======================================="
-    read -p "Выберите действие (0-4): " choice
+    if ! read -p "Выберите действие (0-4): " choice; then
+        echo "Ошибка ввода (EOF). Завершение..."
+        exit 1
+    fi
 
     case $choice in
         1) install_vpn ;;
