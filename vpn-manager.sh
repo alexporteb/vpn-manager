@@ -10,7 +10,9 @@ fi
 
 function press_enter() {
     echo ""
-    read -p "Нажмите Enter, чтобы вернуться в меню..."
+    if ! read -p "Нажмите Enter, чтобы вернуться в меню..."; then
+        exit 1
+    fi
 }
 
 # Определение ОС
@@ -390,6 +392,18 @@ function remove_vpn() {
     fi
     press_enter
 }
+
+# Проверка первичной установки
+if [ ! -f /etc/vpn-ip.txt ]; then
+    clear
+    echo "======================================="
+    echo "    ДОБРО ПОЖАЛОВАТЬ В VPN MANAGER     "
+    echo "======================================="
+    echo "Похоже, VPN-сервер еще не установлен."
+    echo "Через 3 секунды начнется автоматическая установка..."
+    sleep 3
+    install_vpn
+fi
 
 # Главное меню
 while true; do
