@@ -41,11 +41,11 @@ function install_vpn() {
         apt-get update
         DEBIAN_FRONTEND=noninteractive apt-get install -y \
             strongswan strongswan-pki libcharon-extra-plugins libcharon-extauth-plugins \
-            xl2tpd pptpd ppp iptables iptables-persistent curl openssl
+            xl2tpd pptpd ppp iptables iptables-persistent curl openssl fail2ban
     elif [ "$OS_FAMILY" == "rhel" ]; then
         dnf install -y epel-release
         # On RHEL 8+, PowerTools/CRB might be needed for some packages, but epel usually suffices for pptpd and xl2tpd.
-        dnf install -y strongswan xl2tpd pptpd ppp firewalld curl openssl tar
+        dnf install -y strongswan xl2tpd pptpd ppp firewalld curl openssl tar fail2ban
         systemctl enable firewalld --now
     fi
 
@@ -207,13 +207,29 @@ novjccomp
 nologfd
 EOF
 
-    # Фаервол и NAT
+    # Фаервол, NAT и Защита
     if [ "$OS_FAMILY" == "debian" ]; then
         ETH=$(ip -4 route ls | grep default | grep -Po '(?<=dev )(\S+)' | head -1)
+        
+        # Настройка NAT
         iptables -t nat -A POSTROUTING -s 10.10.10.0/24 -o $ETH -j MASQUERADE
         iptables -t nat -A POSTROUTING -s 10.10.20.0/24 -o $ETH -j MASQUERADE
         iptables -t nat -A POSTROUTING -s 10.10.30.0/24 -o $ETH -j MASQUERADE
         iptables -t nat -A POSTROUTING -s 10.10.40.0/24 -o $ETH -j MASQUERADE
+        
+        # Настройка INPUT (Защита сервера)
+        iptables -A INPUT -i lo -j ACCEPT
+        iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+        iptables -A INPUT -p tcp --dport 22 -j ACCEPT # SSH
+        iptables -A INPUT -p udp --dport 500 -j ACCEPT # IKE
+        iptables -A INPUT -p udp --dport 4500 -j ACCEPT # NAT-T
+        iptables -A INPUT -p udp --dport 1701 -j ACCEPT # L2TP
+        iptables -A INPUT -p tcp --dport 1723 -j ACCEPT # PPTP
+        iptables -A INPUT -p 47 -j ACCEPT # GRE (PPTP)
+        iptables -A INPUT -p 50 -j ACCEPT # ESP
+        iptables -A INPUT -p 51 -j ACCEPT # AH
+        iptables -P INPUT DROP # Блокируем весь остальной входящий трафик
+
         netfilter-persistent save
     elif [ "$OS_FAMILY" == "rhel" ]; then
         firewall-cmd --permanent --add-masquerade
@@ -223,8 +239,30 @@ EOF
         firewall-cmd --permanent --add-port=500/udp
         firewall-cmd --permanent --add-port=4500/udp
         firewall-cmd --permanent --add-port=1723/tcp
+        firewall-cmd --permanent --direct --add-rule ipv4 filter INPUT 0 -p gre -j ACCEPT
         firewall-cmd --reload
     fi
+
+    # Настройка Fail2Ban для защиты от брутфорса
+cat > /etc/fail2ban/jail.local <<EOF
+[DEFAULT]
+bantime  = 1h
+findtime = 10m
+maxretry = 5
+
+[sshd]
+enabled = true
+port    = ssh
+filter  = sshd
+logpath = /var/log/auth.log
+maxretry = 3
+EOF
+    # В RHEL пути логов отличаются
+    if [ "$OS_FAMILY" == "rhel" ]; then
+        sed -i 's|/var/log/auth.log|/var/log/secure|g' /etc/fail2ban/jail.local
+    fi
+    systemctl enable fail2ban --now
+    systemctl restart fail2ban
 
     # Запуск служб
     systemctl enable xl2tpd pptpd --now
@@ -313,16 +351,19 @@ function remove_vpn() {
         systemctl stop strongswan-starter strongswan xl2tpd pptpd 2>/dev/null
         
         if [ "$OS_FAMILY" == "debian" ]; then
-            apt-get remove --purge -y strongswan strongswan-pki libcharon-extra-plugins libcharon-extauth-plugins xl2tpd pptpd
+            apt-get remove --purge -y strongswan strongswan-pki libcharon-extra-plugins libcharon-extauth-plugins xl2tpd pptpd fail2ban
             apt-get autoremove -y
             ETH=$(ip -4 route ls | grep default | grep -Po '(?<=dev )(\S+)' | head -1)
             iptables -t nat -D POSTROUTING -s 10.10.10.0/24 -o $ETH -j MASQUERADE 2>/dev/null
             iptables -t nat -D POSTROUTING -s 10.10.20.0/24 -o $ETH -j MASQUERADE 2>/dev/null
             iptables -t nat -D POSTROUTING -s 10.10.30.0/24 -o $ETH -j MASQUERADE 2>/dev/null
             iptables -t nat -D POSTROUTING -s 10.10.40.0/24 -o $ETH -j MASQUERADE 2>/dev/null
+            # Сброс правил INPUT
+            iptables -P INPUT ACCEPT
+            iptables -F INPUT
             netfilter-persistent save 2>/dev/null
         elif [ "$OS_FAMILY" == "rhel" ]; then
-            dnf remove -y strongswan xl2tpd pptpd
+            dnf remove -y strongswan xl2tpd pptpd fail2ban
             dnf autoremove -y
             firewall-cmd --permanent --remove-masquerade
             firewall-cmd --permanent --remove-service=ipsec
@@ -330,10 +371,11 @@ function remove_vpn() {
             firewall-cmd --permanent --remove-port=500/udp
             firewall-cmd --permanent --remove-port=4500/udp
             firewall-cmd --permanent --remove-port=1723/tcp
+            firewall-cmd --permanent --direct --remove-rule ipv4 filter INPUT 0 -p gre -j ACCEPT
             firewall-cmd --reload
         fi
 
-        rm -rf /etc/ipsec.d/ /etc/strongswan/ipsec.d/ /etc/xl2tpd/ ~/pki /etc/vpn-ip.txt /etc/vpn-psk.txt
+        rm -rf /etc/ipsec.d/ /etc/strongswan/ipsec.d/ /etc/xl2tpd/ ~/pki /etc/vpn-ip.txt /etc/vpn-psk.txt /etc/fail2ban/jail.local
         rm -f /etc/ipsec.conf /etc/ipsec.secrets /etc/strongswan/ipsec.conf /etc/strongswan/ipsec.secrets
         rm -f /etc/pptpd.conf /etc/ppp/pptpd-options /etc/ppp/chap-secrets /etc/ppp/options.xl2tpd
         
