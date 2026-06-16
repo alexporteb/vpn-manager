@@ -6,7 +6,7 @@
 # Запуск: sudo bash setup-vpn.sh
 # ============================================================================
 
-set -e
+# Не используем set -e — обрабатываем ошибки вручную, чтобы скрипт не падал молча
 
 # ── Цвета ANSI ──────────────────────────────────────────────────────────────
 RED='\e[31m'
@@ -186,21 +186,28 @@ export DEBIAN_FRONTEND=noninteractive
 
 apt-get update -qq
 
-# Установка пакетов (если уже установлены — пропускаются)
-apt-get install -y -qq \
+# Установка основных пакетов
+apt-get install -y \
     strongswan \
     strongswan-pki \
-    libcharon-extra-plugins \
-    libcharon-extauth-plugins \
-    libstrongswan-extra-plugins \
     xl2tpd \
     pptpd \
     iptables \
     iptables-persistent \
     ufw \
     curl \
-    openssl \
-    > /dev/null 2>&1
+    openssl || {
+        echo -e "${RED}Ошибка при установке основных пакетов!${RESET}"
+        exit 1
+    }
+
+# Дополнительные плагины strongSwan (могут отсутствовать в некоторых дистрибутивах)
+apt-get install -y \
+    libcharon-extra-plugins \
+    libcharon-extauth-plugins \
+    libstrongswan-extra-plugins 2>/dev/null || {
+        echo -e "${YELLOW}⚠️  Некоторые дополнительные плагины strongSwan недоступны (не критично)${RESET}"
+    }
 
 echo -e "${GREEN}✅ Все пакеты установлены${RESET}"
 
