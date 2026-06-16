@@ -293,6 +293,7 @@ function manage_users() {
         echo " 1. Добавить пользователя"
         echo " 2. Удалить пользователя"
         echo " 3. Список пользователей"
+        echo " 4. Данные пользователя"
         echo " 0. Назад"
         echo "======================================"
         if ! read -p "Выберите: " u_choice; then
@@ -326,6 +327,34 @@ function manage_users() {
                 echo "Список пользователей:"
                 if [ -f /etc/ppp/chap-secrets ]; then
                     awk '{print $1}' /etc/ppp/chap-secrets | grep -v '^#' | sort -u
+                fi
+                press_enter
+                ;;
+            4)
+                read -p "Имя пользователя: " USER
+                USER="${USER//$'\r'/}"
+                if grep -q "^$USER " /etc/ppp/chap-secrets; then
+                    PASS=$(grep "^$USER l2tpd" /etc/ppp/chap-secrets | awk '{print $3}')
+                    PUB_IP=$(cat /etc/vpn-ip.txt 2>/dev/null)
+                    PSK_KEY=$(cat /etc/vpn-psk.txt 2>/dev/null)
+                    
+                    clear
+                    echo "======================================"
+                    echo "          ДАННЫЕ ПОЛЬЗОВАТЕЛЯ         "
+                    echo "======================================"
+                    echo "Пользователь: $USER"
+                    echo "Пароль:       $PASS"
+                    echo "IP сервера:   $PUB_IP"
+                    echo "Общий ключ:   $PSK_KEY"
+                    echo ""
+                    echo "Поддерживаемые протоколы:"
+                    echo "- IKEv2"
+                    echo "- IKEv1 (Cisco IPsec)"
+                    echo "- L2TP/IPsec"
+                    echo "- PPTP"
+                    echo "======================================"
+                else
+                    echo "Пользователь $USER не найден!"
                 fi
                 press_enter
                 ;;
