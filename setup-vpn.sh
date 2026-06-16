@@ -839,69 +839,37 @@ show_user_card() {
     local username="$1"
     local password="$2"
     local user_psk="$3"
-    local client_cert="${PKI_DIR}/certs/${username}.crt"
-
-    local title="ПОЛЬЗОВАТЕЛЬ: ${username}"
-    local width=56
 
     clear_screen
     echo ""
-    # Верхняя рамка
-    printf "  ${CYAN}╔"
-    printf '═%.0s' $(seq 1 $width)
-    printf "╗${RESET}\n"
-
-    # Заголовок с именем пользователя
-    printf "  ${CYAN}║${RESET}${BOLD}${WHITE}"
-    printf "%*s" $(( (width + ${#title}) / 2 )) "$title"
-    printf "%*s" $(( (width - ${#title}) / 2 )) ""
-    printf "${CYAN}║${RESET}\n"
-
-    # Разделитель
-    printf "  ${CYAN}╠"
-    printf '═%.0s' $(seq 1 $width)
-    printf "╣${RESET}\n"
-
-    # ── IKEv2 / IKEv1 ──
-    printf "  ${CYAN}║${RESET}                                                        ${CYAN}║${RESET}\n"
-    printf "  ${CYAN}║${RESET}  ${MAGENTA}${BOLD}── IKEv2 / IKEv1 ──${RESET}%-*s${CYAN}║${RESET}\n" $((width - 21)) ""
-    printf "  ${CYAN}║${RESET}  ${DIM}Сервер:${RESET}      ${WHITE}%-*s${CYAN}║${RESET}\n" $((width - 17)) "${SERVER_IP}"
-    printf "  ${CYAN}║${RESET}  ${DIM}Логин:${RESET}       ${GREEN}%-*s${CYAN}║${RESET}\n" $((width - 17)) "${username}"
-    printf "  ${CYAN}║${RESET}  ${DIM}Пароль:${RESET}      ${YELLOW}%-*s${CYAN}║${RESET}\n" $((width - 17)) "${password}"
-    if [[ -f "${client_cert}" ]]; then
-        printf "  ${CYAN}║${RESET}  ${DIM}Сертификат:${RESET}  ${BLUE}%-*s${CYAN}║${RESET}\n" $((width - 17)) "${client_cert}"
-    fi
-    printf "  ${CYAN}║${RESET}                                                        ${CYAN}║${RESET}\n"
-
-    # ── L2TP/IPsec ──
-    printf "  ${CYAN}║${RESET}  ${MAGENTA}${BOLD}── L2TP/IPsec ──${RESET}%-*s${CYAN}║${RESET}\n" $((width - 18)) ""
-    printf "  ${CYAN}║${RESET}  ${DIM}Сервер:${RESET}      ${WHITE}%-*s${CYAN}║${RESET}\n" $((width - 17)) "${SERVER_IP}"
-    printf "  ${CYAN}║${RESET}  ${DIM}PSK:${RESET}         ${YELLOW}%-*s${CYAN}║${RESET}\n" $((width - 17)) "${user_psk}"
-    printf "  ${CYAN}║${RESET}  ${DIM}Логин:${RESET}       ${GREEN}%-*s${CYAN}║${RESET}\n" $((width - 17)) "${username}"
-    printf "  ${CYAN}║${RESET}  ${DIM}Пароль:${RESET}      ${YELLOW}%-*s${CYAN}║${RESET}\n" $((width - 17)) "${password}"
-    printf "  ${CYAN}║${RESET}                                                        ${CYAN}║${RESET}\n"
-
-    # ── PPTP ──
-    printf "  ${CYAN}║${RESET}  ${MAGENTA}${BOLD}── PPTP ──${RESET}%-*s${CYAN}║${RESET}\n" $((width - 12)) ""
-    printf "  ${CYAN}║${RESET}  ${DIM}Сервер:${RESET}      ${WHITE}%-*s${CYAN}║${RESET}\n" $((width - 17)) "${SERVER_IP}"
-    printf "  ${CYAN}║${RESET}  ${DIM}Логин:${RESET}       ${GREEN}%-*s${CYAN}║${RESET}\n" $((width - 17)) "${username}"
-    printf "  ${CYAN}║${RESET}  ${DIM}Пароль:${RESET}      ${YELLOW}%-*s${CYAN}║${RESET}\n" $((width - 17)) "${password}"
-    printf "  ${CYAN}║${RESET}  ${DIM}Шифрование:${RESET}  ${WHITE}%-*s${CYAN}║${RESET}\n" $((width - 17)) "MPPE 128-bit"
-    printf "  ${CYAN}║${RESET}                                                        ${CYAN}║${RESET}\n"
-
-    # Разделитель
-    printf "  ${CYAN}╠"
-    printf '═%.0s' $(seq 1 $width)
-    printf "╣${RESET}\n"
-
-    # Действия
-    printf "  ${CYAN}║${RESET}  ${WHITE}[1]${RESET} Удалить пользователя%-*s${CYAN}║${RESET}\n" $((width - 25)) ""
-    printf "  ${CYAN}║${RESET}  ${WHITE}[0]${RESET} Назад%-*s${CYAN}║${RESET}\n" $((width - 11)) ""
-
-    # Нижняя рамка
-    printf "  ${CYAN}╚"
-    printf '═%.0s' $(seq 1 $width)
-    printf "╝${RESET}\n"
+    echo -e "  ${CYAN}${BOLD}═══════════════ ПОЛЬЗОВАТЕЛЬ: ${username} ═══════════════${RESET}"
+    echo ""
+    echo -e "  ${MAGENTA}${BOLD}IKEv2:${RESET}"
+    echo -e "  ${DIM}Сервер:${RESET}              ${WHITE}${SERVER_IP}${RESET}"
+    echo -e "  ${DIM}Идентификатор IPsec:${RESET} ${GREEN}${username}${RESET}"
+    echo -e "  ${DIM}Общий ключ PSK:${RESET}      ${YELLOW}${user_psk}${RESET}"
+    echo ""
+    echo -e "  ${MAGENTA}${BOLD}IKEv1:${RESET}"
+    echo -e "  ${DIM}Сервер:${RESET}              ${WHITE}${SERVER_IP}${RESET}"
+    echo -e "  ${DIM}Общий ключ PSK:${RESET}      ${YELLOW}${user_psk}${RESET}"
+    echo -e "  ${DIM}Логин:${RESET}               ${GREEN}${username}${RESET}"
+    echo -e "  ${DIM}Пароль:${RESET}              ${YELLOW}${password}${RESET}"
+    echo ""
+    echo -e "  ${MAGENTA}${BOLD}L2TP:${RESET}"
+    echo -e "  ${DIM}Сервер:${RESET}              ${WHITE}${SERVER_IP}${RESET}"
+    echo -e "  ${DIM}Общий ключ PSK:${RESET}      ${YELLOW}${user_psk}${RESET}"
+    echo -e "  ${DIM}Логин:${RESET}               ${GREEN}${username}${RESET}"
+    echo -e "  ${DIM}Пароль:${RESET}              ${YELLOW}${password}${RESET}"
+    echo ""
+    echo -e "  ${MAGENTA}${BOLD}PPTP:${RESET}"
+    echo -e "  ${DIM}Сервер:${RESET}              ${WHITE}${SERVER_IP}${RESET}"
+    echo -e "  ${DIM}Логин:${RESET}               ${GREEN}${username}${RESET}"
+    echo -e "  ${DIM}Пароль:${RESET}              ${YELLOW}${password}${RESET}"
+    echo ""
+    echo -e "  ${CYAN}══════════════════════════════════════════════════${RESET}"
+    echo ""
+    echo -e "  ${WHITE}[1]${RESET} Удалить пользователя"
+    echo -e "  ${WHITE}[0]${RESET} Назад"
     echo ""
 
     echo -ne "  ${BOLD}Выберите действие: ${RESET}"
@@ -928,22 +896,35 @@ show_user_card() {
     esac
 }
 
+# ── Генерация случайного имени пользователя ──────────────────────────────────
+generate_random_username() {
+    local prefixes=("user" "vpn" "client" "net" "connect")
+    local prefix="${prefixes[$((RANDOM % ${#prefixes[@]}))]}"
+    echo "${prefix}$(openssl rand -hex 3)"
+}
+
+# ── Генерация случайного пароля ──────────────────────────────────────────────
+generate_random_password() {
+    openssl rand -base64 16 | tr -d '/+=' | head -c 14
+}
+
 # ── МЕНЮ: Добавить пользователя ──────────────────────────────────────────────
 menu_add_user() {
     clear_screen
     echo ""
     echo -e "  ${CYAN}${BOLD}═══ ДОБАВЛЕНИЕ ПОЛЬЗОВАТЕЛЯ ═══${RESET}"
     echo ""
+    echo -e "  ${DIM}(оставьте пустым для генерации случайных данных)${RESET}"
+    echo ""
 
     # Ввод логина
     echo -ne "  ${WHITE}Логин: ${RESET}"
     read -r username
 
-    # Валидация
+    # Генерация случайного логина если пусто
     if [[ -z "$username" ]]; then
-        echo -e "  ${RED}Ошибка: логин не может быть пустым${RESET}"
-        press_enter
-        return
+        username=$(generate_random_username)
+        echo -e "  ${DIM}Сгенерирован логин: ${GREEN}${username}${RESET}"
     fi
 
     # Проверка на существование
@@ -957,10 +938,10 @@ menu_add_user() {
     echo -ne "  ${WHITE}Пароль: ${RESET}"
     read -r password
 
+    # Генерация случайного пароля если пусто
     if [[ -z "$password" ]]; then
-        echo -e "  ${RED}Ошибка: пароль не может быть пустым${RESET}"
-        press_enter
-        return
+        password=$(generate_random_password)
+        echo -e "  ${DIM}Сгенерирован пароль: ${YELLOW}${password}${RESET}"
     fi
 
     echo ""
