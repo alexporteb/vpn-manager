@@ -1,9 +1,11 @@
 #!/bin/bash
 # VPN Server Manager (IKEv2, L2TP, PPTP)
+# Поддерживает Debian/Ubuntu и RHEL/CentOS/AlmaLinux
 
+# Авто-эскалация прав (если запущен не под root)
 if [[ $EUID -ne 0 ]]; then
-   echo "Этот скрипт необходимо запускать от имени root (используйте sudo)" 
-   exit 1
+   echo "Запуск скрипта требует прав root. Запрашиваем sudo..."
+   exec sudo "$0" "$@"
 fi
 
 function press_enter() {
@@ -11,15 +13,41 @@ function press_enter() {
     read -p "Нажмите Enter, чтобы вернуться в меню..."
 }
 
+# Определение ОС
+if [ -f /etc/os-release ]; then
+    . /etc/os-release
+    OS_ID=$ID
+    OS_ID_LIKE=$ID_LIKE
+else
+    echo "Не удалось определить ОС. Скрипт поддерживает только современные Linux дистрибутивы с /etc/os-release."
+    exit 1
+fi
+
+if [[ "$OS_ID" == "ubuntu" || "$OS_ID" == "debian" || "$OS_ID_LIKE" == *"debian"* ]]; then
+    OS_FAMILY="debian"
+elif [[ "$OS_ID" == "centos" || "$OS_ID" == "rhel" || "$OS_ID" == "almalinux" || "$OS_ID" == "rocky" || "$OS_ID_LIKE" == *"rhel"* || "$OS_ID_LIKE" == *"centos"* || "$OS_ID_LIKE" == *"fedora"* ]]; then
+    OS_FAMILY="rhel"
+else
+    echo "Ваша операционная система ($OS_ID) пока не поддерживается."
+    exit 1
+fi
+
 function install_vpn() {
     clear
-    echo "Начинаем установку VPN сервера..."
+    echo "Начинаем установку VPN сервера для ОС семейства: $OS_FAMILY"
     
-    # Update and install packages
-    apt-get update
-    DEBIAN_FRONTEND=noninteractive apt-get install -y \
-        strongswan strongswan-pki libcharon-extra-plugins libcharon-extauth-plugins \
-        xl2tpd pptpd ppp iptables iptables-persistent curl openssl
+    # 1. Установка пакетов в зависимости от ОС
+    if [ "$OS_FAMILY" == "debian" ]; then
+        apt-get update
+        DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            strongswan strongswan-pki libcharon-extra-plugins libcharon-extauth-plugins \
+            xl2tpd pptpd ppp iptables iptables-persistent curl openssl
+    elif [ "$OS_FAMILY" == "rhel" ]; then
+        dnf install -y epel-release
+        # On RHEL 8+, PowerTools/CRB might be needed for some packages, but epel usually suffices for pptpd and xl2tpd.
+        dnf install -y strongswan xl2tpd pptpd ppp firewalld curl openssl tar
+        systemctl enable firewalld --now
+    fi
 
     PUBLIC_IP=$(curl -s -4 ifconfig.me || curl -s -4 icanhazip.com)
     if [ -z "$PUBLIC_IP" ]; then
@@ -31,10 +59,11 @@ function install_vpn() {
     echo "$PSK" > /etc/vpn-psk.txt
 
     # IP Forwarding
-    sed -i 's/#net.ipv4.ip_forward=1/net.ipv4.ip_forward=1/g' /etc/sysctl.conf
+    sed -i '/net.ipv4.ip_forward/d' /etc/sysctl.conf
+    echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
     sysctl -p
 
-    # StrongSwan (IKEv2, L2TP)
+    # StrongSwan конфиги (общие)
 cat > /etc/ipsec.conf <<EOF
 config setup
     charondebug="ike 1, knl 1, cfg 0"
@@ -76,9 +105,20 @@ conn IKEv2
     rightsendcert=never
     eap_identity=%identity
     auto=add
+
+conn IKEv1-XAUTH
+    keyexchange=ikev1
+    left=%any
+    leftauth=psk
+    leftsubnet=0.0.0.0/0
+    right=%any
+    rightauth=psk
+    rightauth2=xauth
+    rightsourceip=10.10.40.0/24
+    rightdns=8.8.8.8,8.8.4.4
+    auto=add
 EOF
 
-    # Certificates
     mkdir -p ~/pki/{cacerts,certs,private}
     chmod 700 ~/pki
     ipsec pki --gen --type rsa --size 4096 --outform pem > ~/pki/private/ca-key.pem
@@ -92,16 +132,25 @@ EOF
                   --flag serverAuth --flag ikeIntermediate \
                   --outform pem > ~/pki/certs/server-cert.pem
 
-    cp ~/pki/cacerts/ca-cert.pem /etc/ipsec.d/cacerts/
-    cp ~/pki/certs/server-cert.pem /etc/ipsec.d/certs/
-    cp ~/pki/private/server-key.pem /etc/ipsec.d/private/
+    # Пути сертификатов зависят от ОС (в rhel иногда /etc/strongswan/)
+    IPSEC_D="/etc/ipsec.d"
+    if [ -d /etc/strongswan/ipsec.d ]; then
+        IPSEC_D="/etc/strongswan/ipsec.d"
+        # Симлинки для конфигов RHEL если нужно
+        ln -sf /etc/ipsec.conf /etc/strongswan/ipsec.conf
+        ln -sf /etc/ipsec.secrets /etc/strongswan/ipsec.secrets
+    fi
+
+    cp ~/pki/cacerts/ca-cert.pem $IPSEC_D/cacerts/
+    cp ~/pki/certs/server-cert.pem $IPSEC_D/certs/
+    cp ~/pki/private/server-key.pem $IPSEC_D/private/
 
 cat > /etc/ipsec.secrets <<EOF
 : RSA "server-key.pem"
 %any %any : PSK "$PSK"
 EOF
 
-    # xl2tpd
+    # xl2tpd конфиг
 cat > /etc/xl2tpd/xl2tpd.conf <<EOF
 [global]
 ipsec saref = yes
@@ -132,7 +181,7 @@ novjccomp
 nologfd
 EOF
 
-    # pptpd
+    # pptpd конфиг
 cat > /etc/pptpd.conf <<EOF
 option /etc/ppp/pptpd-options
 logwtmp
@@ -158,16 +207,38 @@ novjccomp
 nologfd
 EOF
 
-    # iptables
-    ETH=$(ip -4 route ls | grep default | grep -Po '(?<=dev )(\S+)' | head -1)
-    iptables -t nat -A POSTROUTING -s 10.10.10.0/24 -o $ETH -j MASQUERADE
-    iptables -t nat -A POSTROUTING -s 10.10.20.0/24 -o $ETH -j MASQUERADE
-    iptables -t nat -A POSTROUTING -s 10.10.30.0/24 -o $ETH -j MASQUERADE
-    netfilter-persistent save
+    # Фаервол и NAT
+    if [ "$OS_FAMILY" == "debian" ]; then
+        ETH=$(ip -4 route ls | grep default | grep -Po '(?<=dev )(\S+)' | head -1)
+        iptables -t nat -A POSTROUTING -s 10.10.10.0/24 -o $ETH -j MASQUERADE
+        iptables -t nat -A POSTROUTING -s 10.10.20.0/24 -o $ETH -j MASQUERADE
+        iptables -t nat -A POSTROUTING -s 10.10.30.0/24 -o $ETH -j MASQUERADE
+        iptables -t nat -A POSTROUTING -s 10.10.40.0/24 -o $ETH -j MASQUERADE
+        netfilter-persistent save
+    elif [ "$OS_FAMILY" == "rhel" ]; then
+        firewall-cmd --permanent --add-masquerade
+        # Разрешаем службы
+        firewall-cmd --permanent --add-service=ipsec
+        firewall-cmd --permanent --add-port=1701/udp
+        firewall-cmd --permanent --add-port=500/udp
+        firewall-cmd --permanent --add-port=4500/udp
+        firewall-cmd --permanent --add-port=1723/tcp
+        firewall-cmd --reload
+    fi
 
-    systemctl restart strongswan-starter || ipsec restart
-    systemctl restart xl2tpd
-    systemctl restart pptpd
+    # Запуск служб
+    systemctl enable xl2tpd pptpd --now
+    systemctl restart xl2tpd pptpd
+
+    if systemctl is-active --quiet strongswan-starter; then
+        systemctl enable strongswan-starter --now
+        systemctl restart strongswan-starter
+    elif systemctl is-active --quiet strongswan; then
+        systemctl enable strongswan --now
+        systemctl restart strongswan
+    else
+        ipsec restart 2>/dev/null
+    fi
 
     echo "УСТАНОВКА ЗАВЕРШЕНА!"
     press_enter
@@ -189,26 +260,29 @@ function manage_users() {
             1)
                 read -p "Имя пользователя: " USER
                 read -p "Пароль: " PASS
-                sed -i "/^$USER /d" /etc/ppp/chap-secrets
-                sed -i "/^$USER /d" /etc/ipsec.secrets
+                sed -i "/^$USER /d" /etc/ppp/chap-secrets 2>/dev/null || true
+                sed -i "/^$USER /d" /etc/ipsec.secrets 2>/dev/null || true
                 echo "$USER l2tpd $PASS *" >> /etc/ppp/chap-secrets
                 echo "$USER pptpd $PASS *" >> /etc/ppp/chap-secrets
                 echo "$USER : EAP \"$PASS\"" >> /etc/ipsec.secrets
-                ipsec secrets > /dev/null 2>&1
+                echo "$USER : XAUTH \"$PASS\"" >> /etc/ipsec.secrets
+                ipsec secrets > /dev/null 2>&1 || true
                 echo "Пользователь $USER добавлен."
                 press_enter
                 ;;
             2)
                 read -p "Имя пользователя для удаления: " USER
-                sed -i "/^$USER /d" /etc/ppp/chap-secrets
-                sed -i "/^$USER /d" /etc/ipsec.secrets
-                ipsec secrets > /dev/null 2>&1
+                sed -i "/^$USER /d" /etc/ppp/chap-secrets 2>/dev/null || true
+                sed -i "/^$USER /d" /etc/ipsec.secrets 2>/dev/null || true
+                ipsec secrets > /dev/null 2>&1 || true
                 echo "Пользователь $USER удален."
                 press_enter
                 ;;
             3)
                 echo "Список пользователей:"
-                awk '{print $1}' /etc/ppp/chap-secrets | grep -v '^#' | sort -u
+                if [ -f /etc/ppp/chap-secrets ]; then
+                    awk '{print $1}' /etc/ppp/chap-secrets | grep -v '^#' | sort -u
+                fi
                 press_enter
                 ;;
             0) break ;;
@@ -236,16 +310,33 @@ function remove_vpn() {
     read -p "Вы уверены, что хотите удалить VPN? (y/n): " confirm
     if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
         echo "Удаление..."
-        systemctl stop strongswan-starter xl2tpd pptpd 2>/dev/null
-        apt-get remove --purge -y strongswan strongswan-pki libcharon-extra-plugins libcharon-extauth-plugins xl2tpd pptpd
-        apt-get autoremove -y
-        rm -rf /etc/ipsec.d/ /etc/xl2tpd/ ~/pki /etc/vpn-ip.txt /etc/vpn-psk.txt
-        rm -f /etc/ipsec.conf /etc/ipsec.secrets /etc/pptpd.conf /etc/ppp/pptpd-options /etc/ppp/chap-secrets /etc/ppp/options.xl2tpd
-        ETH=$(ip -4 route ls | grep default | grep -Po '(?<=dev )(\S+)' | head -1)
-        iptables -t nat -D POSTROUTING -s 10.10.10.0/24 -o $ETH -j MASQUERADE 2>/dev/null
-        iptables -t nat -D POSTROUTING -s 10.10.20.0/24 -o $ETH -j MASQUERADE 2>/dev/null
-        iptables -t nat -D POSTROUTING -s 10.10.30.0/24 -o $ETH -j MASQUERADE 2>/dev/null
-        netfilter-persistent save 2>/dev/null
+        systemctl stop strongswan-starter strongswan xl2tpd pptpd 2>/dev/null
+        
+        if [ "$OS_FAMILY" == "debian" ]; then
+            apt-get remove --purge -y strongswan strongswan-pki libcharon-extra-plugins libcharon-extauth-plugins xl2tpd pptpd
+            apt-get autoremove -y
+            ETH=$(ip -4 route ls | grep default | grep -Po '(?<=dev )(\S+)' | head -1)
+            iptables -t nat -D POSTROUTING -s 10.10.10.0/24 -o $ETH -j MASQUERADE 2>/dev/null
+            iptables -t nat -D POSTROUTING -s 10.10.20.0/24 -o $ETH -j MASQUERADE 2>/dev/null
+            iptables -t nat -D POSTROUTING -s 10.10.30.0/24 -o $ETH -j MASQUERADE 2>/dev/null
+            iptables -t nat -D POSTROUTING -s 10.10.40.0/24 -o $ETH -j MASQUERADE 2>/dev/null
+            netfilter-persistent save 2>/dev/null
+        elif [ "$OS_FAMILY" == "rhel" ]; then
+            dnf remove -y strongswan xl2tpd pptpd
+            dnf autoremove -y
+            firewall-cmd --permanent --remove-masquerade
+            firewall-cmd --permanent --remove-service=ipsec
+            firewall-cmd --permanent --remove-port=1701/udp
+            firewall-cmd --permanent --remove-port=500/udp
+            firewall-cmd --permanent --remove-port=4500/udp
+            firewall-cmd --permanent --remove-port=1723/tcp
+            firewall-cmd --reload
+        fi
+
+        rm -rf /etc/ipsec.d/ /etc/strongswan/ipsec.d/ /etc/xl2tpd/ ~/pki /etc/vpn-ip.txt /etc/vpn-psk.txt
+        rm -f /etc/ipsec.conf /etc/ipsec.secrets /etc/strongswan/ipsec.conf /etc/strongswan/ipsec.secrets
+        rm -f /etc/pptpd.conf /etc/ppp/pptpd-options /etc/ppp/chap-secrets /etc/ppp/options.xl2tpd
+        
         echo "Удалено."
     else
         echo "Отменено."
@@ -257,7 +348,8 @@ function remove_vpn() {
 while true; do
     clear
     echo "======================================="
-    echo "        VPN SERVER MANAGER v1.0        "
+    echo "        VPN SERVER MANAGER v1.1        "
+    echo "    (ОС: $OS_ID_LIKE $OS_ID - $OS_FAMILY)  "
     echo "======================================="
     echo " 1. Установить VPN сервер"
     echo " 2. Управление пользователями"
